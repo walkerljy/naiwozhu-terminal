@@ -1,0 +1,16 @@
+这里是语音素材目录，内容由 gen_voice.py 生成，不要手改文件名。
+
+规则：**文件名就是它读的文字**，不带标点。tts.py 运行时按「最长匹配」取用。
+- 整句片段（优先命中，语气最自然）： 现在没有待办放心休息一下吧.wav
+- 模板里的固定片段：                   你有.wav  个待办.wav  已经改到.wav
+- 逐字兜底：                           你.wav  好.wav  三.wav
+- 槽位词（待办标题里的常用词）：       作业.wav  例会.wav
+
+格式：16bit / 16kHz / 单声道 WAV。格式不符会直接报错，不会静默失效。
+
+生成命令：
+    python gen_voice.py --list                      # 看要准备哪些
+    python gen_voice.py --provider cmd              # 用你自己的奶龙音色引擎
+    python gen_voice.py --extra 待办常用词.txt --provider cmd
+
+缺某个片段不会崩溃，会跳过并在终端汇总提示。

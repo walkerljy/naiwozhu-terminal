@@ -1,0 +1,13 @@
+numpy>=1.24
+sounddevice>=0.4.6
+vosk>=0.3.45
+pypinyin>=0.50          # 唤醒词按读音匹配用；不装只能按字匹配，漏唤会多很多
+
+# 指令识别的第二级（可选，PC 上建议装，明显更准）：
+#   faster-whisper
+#   不装也能跑——`ASR_ENGINE=auto` 会自动退回只用 Vosk。
+#   树莓派上建议不装：Vosk 常驻更省电，噪声大时它反而更稳。
+
+# 只有 gen_voice.py 用得上，运行时不需要：
+#   edge-tts        （占位音色，正式素材用你自己的奶龙引擎即可不装）
+# 系统依赖：树莓派 sudo apt install libportaudio2 ffmpeg

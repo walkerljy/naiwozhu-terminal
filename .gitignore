@@ -1,0 +1,28 @@
+# 密钥（文件名别叫 secrets.py，会遮蔽标准库）
+local_secrets.py
+
+# 模型与语音素材（体积大，各自本地下载/生成）
+# 克隆仓库后执行：
+#   python download_model.py
+#   python gen_voice.py --from-api --provider minimax --force
+models/
+resources/voice/*.wav
+
+# 试听样本：含参考音频与克隆演示，不入库
+resources/voice_samples/
+
+# 测评/临时产物
+_asr/
+
+# Python
+__pycache__/
+*.pyc
+*.zip
+
+# 编辑器
+.vscode/
+.idea/
+
+# 系统
+.DS_Store
+Thumbs.db
