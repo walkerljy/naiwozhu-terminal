@@ -11,8 +11,11 @@ from pathlib import Path
 
 from pptx import Presentation
 
-SRC = Path(r"D:\walke\Documents\xwechat_files\wxid_8vuip97sii1m32_b1a0\msg\file\2026-10\presentation.pptx")
-DST = Path(r"D:\program development\naiwozhu\demo\presentation-updated.pptx")
+DEFAULT_SRC = r"D:\walke\Documents\xwechat_files\wxid_8vuip97sii1m32_b1a0\msg\file\2026-10\presentation.pptx"
+# 源文件路径可以用参数覆盖：python edit_pptx.py 别的演示.pptx
+SRC = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(DEFAULT_SRC)
+# 输出放在脚本旁边，不写死绝对路径——换目录、换机器都能跑
+DST = Path(__file__).resolve().with_name("presentation-updated.pptx")
 
 prs = Presentation(str(SRC))
 

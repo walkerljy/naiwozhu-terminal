@@ -22,14 +22,14 @@
 **终端 A（电脑端）** —— 如果已经在跑就跳过：
 
 ```powershell
-cd "D:\program development\naiwozhu\naiwozhu-app"
+cd <电脑端仓库目录>            # 队友的 aiwozhu-app
 .\.venv\Scripts\python.exe app\server.py
 ```
 
 **终端 B（奶龙终端）** —— 先自检，不动网络：
 
 ```powershell
-cd "D:\program development\naiwozhu\demo"
+cd <本项目目录>                # 就是你现在所在的地方
 python assistant.py --check
 ```
 
