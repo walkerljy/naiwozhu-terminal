@@ -67,6 +67,21 @@ _RANGES = ("all", "today", "tomorrow", "3d", "7d", "custom")
 _KINDS = ("deadline", "日程")
 
 
+class ConfigError(RuntimeError):
+    """本地配置缺失（比如还没填 LLM_API_KEY）。
+
+    单独一个类型是为了和网络错误分开：密钥没配的情况下请求会返回 401，
+    上层如果按"网络不通"兜底，就会说成"连不上电脑那边"——完全指错方向。
+    """
+
+
+class LLMError(RuntimeError):
+    """模型这边的问题（超时、断网、限流、回包不是 JSON）。
+
+    和 backend 的错误分开：两者都归成"网络不通"时，用户会去查错的那一头。
+    """
+
+
 def _system():
     now = datetime.now()
     today = now.date()
@@ -97,15 +112,20 @@ def _post(body, allow_retry=True):
         if e.code == 429 and allow_retry:     # 校内网关有速率限制，退一步重试一次
             time.sleep(1.5)
             return _post(body, allow_retry=False)
-        raise RuntimeError(f"模型接口返回 {e.code}：{e.read().decode('utf-8', 'ignore')[:120]}") from None
+        raise LLMError(f"模型接口返回 {e.code}：{e.read().decode('utf-8', 'ignore')[:120]}") from None
     except Exception as e:
         # 超时抛的是 TimeoutError、断网是 URLError、DNS 失败是 gaierror——
         # 它们不在同一个继承链上，逐个列会漏，这里统一归成一句话。
-        raise RuntimeError(f"模型接口不可用：{e}") from None
+        raise LLMError(f"模型接口不可用：{e}") from None
 
 
 def parse(text):
     """返回统一格式的 dict；模型输出畸形时重试一次，还不行就抛异常。"""
+    if not config.LLM_API_KEY:
+        # 先说清楚是配置问题，别让 401 变成"网络不通"
+        raise ConfigError(
+            "没有 LLM_API_KEY：把 local_secrets.example.py 复制成 local_secrets.py 并填上，"
+            "或者设环境变量 LLM_API_KEY")
     body = {
         "model": config.LLM_MODEL,
         "messages": [{"role": "system", "content": _system()},
@@ -122,7 +142,10 @@ def parse(text):
             {"role": "assistant", "content": content},
             {"role": "user", "content": "上面不是合法 JSON，请只输出一个 JSON 对象。"},
         ]
-        return _clean(json.loads(_post(body)))
+        try:
+            return _clean(json.loads(_post(body)))
+        except json.JSONDecodeError:
+            raise LLMError("模型两次都回了非 JSON，先看看接口是不是换了模型") from None
 
 
 def _date_ok(s):

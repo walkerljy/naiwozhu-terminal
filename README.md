@@ -181,13 +181,16 @@ whisper/Vosk，只在控制台打一行提示。演示现场断网也不会罢�
 | assistant.py | 主循环入口 |
 | gen_voice.py | 离线生成语音素材（奶龙音色） |
 | download_model.py | 下载 Vosk 中文模型 |
+| cloud_asr.py | 单独验证云端识别（`python cloud_asr.py 音频.wav`） |
+| asr_bench.py | 识别引擎对比评测，算字符错误率 CER（开发用，不参与运行） |
+| edit_pptx.py | 把答辩 PPT 里过时的信息改成实际实现（跟运行无关） |
 | INTEGRATION.md | 和电脑端的对接说明 |
 
 ## 第一次跑
 
 ```bash
 python -m pip install -r requirements.txt
-copy local_secrets.example.py local_secrets.py     # 填 LLM_API_KEY
+cp local_secrets.example.py local_secrets.py        # 填 LLM_API_KEY（Windows 用 copy）
 python download_model.py               # 下载 Vosk 中文小模型（约 40MB）
 python assistant.py --say "我今天有什么课"
 ```
@@ -202,6 +205,19 @@ python assistant.py --denoise         # 教室/宿舍这种有持续底噪的环
 树莓派额外装 PortAudio：`sudo apt install -y libportaudio2`；
 接外接麦/声卡时分别指定设备：`IN_DEVICE=2 OUT_DEVICE=1 python3 assistant.py`。
 设备名或索引都可以，用 `python -c "import sounddevice as sd; print(sd.query_devices())"` 查。
+
+### 两个"和别人机器不一样"的地方
+
+- **模型接口默认走校内网关**（`LLM_BASE_URL=https://models.sjtu.edu.cn/api/v1`）。
+  不在校园网里的话换成任意 OpenAI 兼容地址，例如 `LLM_BASE_URL=https://api.deepseek.com/v1`。
+- **语音素材不进版本库**（体积大，按机器生成）。想先听声就先拿系统语音占位：
+
+  ```bash
+  python gen_voice.py --provider sapi     # Windows 自带语音，约 120 条
+  ```
+
+  不生成也能跑：`speak()` 找不到素材时会把该说的话打印出来，只是不出声。
+  `--from-api` 那一步需要电脑端服务在跑（向它取课名/教室），没有就跳过。
 
 ## 先测一遍（不用等奶龙素材）
 
@@ -357,7 +373,7 @@ python gen_voice.py --from-api --provider edge --force
 | 变量 | 默认 | 说明 |
 |---|---|---|
 | LLM_API_KEY | local_secrets.py | 必填 |
-| LLM_BASE_URL | models.sjtu.edu.cn/api/v1 | OpenAI 兼容地址 |
+| LLM_BASE_URL | models.sjtu.edu.cn/api/v1 | OpenAI 兼容地址；不在校园网就换成自己的 |
 | LLM_MODEL | deepseek-chat | 别用 reasoner，语音场景要的是快 |
 | BACKEND_URL | http://127.0.0.1:5173 | 电脑端服务地址；树莓派填 PC 的 IP |
 | BACKEND_TOKEN | 空 | 电脑端 `NAIWOZHU_ACCESS_KEY` 的值，走局域网时两边填一样 |

@@ -13,6 +13,7 @@ resources/voice_samples/
 
 # 测评/临时产物
 _asr/
+resources/voice/_missing.txt
 
 # Python
 __pycache__/

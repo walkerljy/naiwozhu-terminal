@@ -34,7 +34,7 @@ if "--system-tts" in _args:
 
 import backend                                                    # noqa: E402
 from audio import beep, play                                      # noqa: E402  （要在改完 config 之后导入）
-from llm import parse                                             # noqa: E402
+from llm import ConfigError, LLMError, parse                          # noqa: E402
 import stt                                                        # noqa: E402
 import tts                                                        # noqa: E402
 from tts import TEMPLATES, cn_int, cn_text, human_time, render, speak  # noqa: E402
@@ -165,6 +165,12 @@ def turn(text=None):
         return say("not_heard")
     try:
         handle(text)
+    except ConfigError as e:                    # 密钥没配：直说怎么补，别说成网络问题
+        print("[assistant] 配置缺失：", e)
+        say("config")
+    except LLMError as e:                       # 模型超时/限流：也别甩锅给电脑端
+        print("[assistant]", e)
+        say("llm")
     except backend.AuthError as e:
         print("[assistant]", e)
         say("auth")
@@ -231,6 +237,10 @@ def main():
           f"降噪={'开' if config.DENOISE else '关'} "
           f"发声={'系统语音' if config.SYSTEM_TTS else ('关' if NO_TTS else '奶龙素材')} "
           f"识别={asr} 模型={config.LLM_MODEL} 电脑端={config.BACKEND_URL}")
+
+    if not config.LLM_API_KEY:                  # 别等用户说完话才发现没配密钥
+        print("[assistant] 提示：还没有 LLM_API_KEY（见 local_secrets.example.py），"
+              "现在只能做 --check 这类不联网的自检")
 
     if "--check" in _args:                      # 只管麦克风和唤醒，不碰网络
         return check()
