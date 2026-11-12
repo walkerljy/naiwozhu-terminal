@@ -42,6 +42,53 @@ class Denoiser:
         return out.astype(np.float32) * self.fade
 
 
+def _resample(pcm, in_rate, out_rate):
+    """把 in_rate 的 int16 降/升采样到 out_rate。
+
+    整数倍直接按组取平均（48k→16k 就是每 3 个取均值，顺带做了抗混叠）；
+    非整数倍走线性插值。语音场景够用，不引入 scipy 依赖。
+    """
+    if in_rate == out_rate or len(pcm) == 0:
+        return pcm
+    if in_rate % out_rate == 0:
+        k = in_rate // out_rate
+        usable = len(pcm) // k * k
+        return pcm[:usable].reshape(-1, k).mean(axis=1).astype(np.int16)
+    idx = np.arange(0, len(pcm), in_rate / out_rate)
+    return np.interp(idx, np.arange(len(pcm)), pcm).astype(np.int16)
+
+
+_RATE = {"in": None}          # 这次开成功过的采样率，下次直接用它，不再每回重试 16k
+
+
+def _open_input():
+    """打开输入流；设备不支持 16k 就退到它支持的采样率（软件重采样回 16k）。
+
+    为什么要这么兜：不少 USB 声卡（如 C-Media/PCM2902 那类）只支持
+    44.1k/48k，PortAudio 直接开 16k 会报 Invalid sample rate（-9997），
+    程序连麦克风都打不开——而 Vosk 只吃 16k。
+    """
+    candidates = [config.SAMPLE_RATE, 48000, 44100]
+    if _RATE["in"] in candidates:                 # 上次成功的优先
+        candidates.remove(_RATE["in"])
+        candidates.insert(0, _RATE["in"])
+    last = None
+    for rate in candidates:
+        block = int(config.BLOCK * rate / config.SAMPLE_RATE)
+        try:
+            s = sd.InputStream(samplerate=rate, blocksize=block, channels=1,
+                               dtype="int16", device=config.IN_DEVICE)
+            s.start()
+            if rate != config.SAMPLE_RATE:
+                print(f"[audio] 麦克风不支持 {config.SAMPLE_RATE}Hz，改用 {rate}Hz 采集"
+                      f"（软件重采样到 {config.SAMPLE_RATE}Hz）", flush=True)
+            _RATE["in"] = rate
+            return s, rate, block
+        except Exception as e:                    # 换下一个候选采样率
+            last = e
+    raise last
+
+
 def record_stream(dur=None):
     """逐块录音，产出 (int16 音频块, 音量 rms)。
 
@@ -49,22 +96,28 @@ def record_stream(dur=None):
     喂 float32 进去它会当成整数解读，结果是听不清人话（这里踩过坑）。
     第二项是归一到 0..1 的音量，用来和 VAD_THRESHOLD 比。降噪只作用在送识别的那路，
     音量始终按原始信号算，所以开关降噪不会改变断句行为。
+
+    采样率：对外永远是 config.SAMPLE_RATE（Vosk 要 16k），设备支持不了就在内部
+    按它支持的率采、再重采样回 16k。
     """
     total = int(config.SAMPLE_RATE * dur) if dur else None
     dnr = Denoiser(config.BLOCK, config.DENOISE_STRENGTH) if config.DENOISE else None
     n = 0
-    with sd.InputStream(samplerate=config.SAMPLE_RATE, blocksize=config.BLOCK,
-                        channels=1, dtype="int16", device=config.IN_DEVICE) as s:
+    s, in_rate, block = _open_input()
+    try:
         while total is None or n < total:
-            data, _ = s.read(config.BLOCK)
-            n += config.BLOCK
-            pcm = data.reshape(-1)
+            data, _ = s.read(block)
+            pcm = _resample(data.reshape(-1), in_rate, config.SAMPLE_RATE)
+            n += len(pcm)
             raw = pcm.astype(np.float32) / 32768.0
             rms = float(np.sqrt(np.mean(raw * raw)))
             if dnr is None:
                 yield pcm, rms                      # 不降噪就直接把原始 int16 送出去，不做无谓转换
             else:
                 yield np.clip(dnr(raw) * 32767, -32768, 32767).astype(np.int16), rms
+    finally:
+        s.stop()
+        s.close()
 
 
 def play(audio):
