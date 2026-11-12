@@ -14,6 +14,7 @@ llm.py —— 把一句话理解成结构化查询条件
 相关文件：参数来自 config.py；被 assistant.py 调用。
 """
 import json
+import re
 import time
 import urllib.error
 import urllib.request
@@ -33,11 +34,12 @@ SYSTEM = """你是一个把中文口语转成查询参数的解析器，只输�
 
 intent 只有三个：
 - query    想查东西（作业、日程、课、安排、考试……）
-- adjust   想改数据（改时间、改标题、加一条、删一条、推迟、标记完成）
+- adjust   想改数据（改时间、删一条、隐藏、撤销删除）
 - unknown  听不懂、或者不是来查数据的（打招呼、问天气、闲聊）
 
-输出字段：
-{"intent": "", "kind": "", "range": "", "start_date": "", "end_date": "", "course": ""}
+输出字段（12 个，缺一不可，没提到就给空串或 0）：
+{"intent":"", "kind":"", "range":"", "start_date":"", "end_date":"", "course":"",
+ "action":"", "title_kw":"", "ordinal":0, "start_time":"", "end_time":""}
 
 kind   问作业/截止/要交/没交 → "deadline"；问课/日程/安排/会议/考试/活动 → "日程"；
        两类都要问、或者没说清 → ""
@@ -45,26 +47,38 @@ range  "all"(不限时间) / "today" / "tomorrow" / "3d"(今明后天) / "7d"(�
        / "custom"(具体某几天，要同时填 start_date 和 end_date，含首尾)
 course 课程简称（高数、线代、程设……），没提就空
 
+action 只有 intent=adjust 时才有值，否则空：
+- "delete"      删掉 / 去掉 / 隐藏某一条
+- "restore"     撤销 / 恢复刚才删掉的那条
+- "reschedule"  改时间（推迟、提前、挪到几点）。**不要用 "update"**，一律用 reschedule
+title_kw  要动的那条的关键词（标题或课程名，如"高数""学生会"），没提就空
+ordinal   用户说"第几条"时给数字 1-9（"第一条"→1），否则 0
+start_time / end_time  改到几点，24 小时制 "HH:MM"（"下午两点"→"14:00"），没说就空
+
 （听不懂时不用写道歉的话，播报的话术在 tts.py 的模板里。）
 
 未来十天的日期，直接查表，不要自己算：
 __DAYS__
 
 示例：
-用户"我还有哪些作业没交" → {"intent":"query","kind":"deadline","range":"all","start_date":"","end_date":"","course":""}
-用户"我今天有什么课" → {"intent":"query","kind":"日程","range":"today","start_date":"","end_date":"","course":""}
-用户"明天有啥要交的" → {"intent":"query","kind":"deadline","range":"tomorrow","start_date":"","end_date":"","course":""}
-用户"这周有什么安排" → {"intent":"query","kind":"","range":"7d","start_date":"","end_date":"","course":""}
-用户"高数有什么作业" → {"intent":"query","kind":"deadline","range":"all","start_date":"","end_date":"","course":"高数"}
-用户"下周三有什么" → {"intent":"query","kind":"","range":"custom","start_date":"__NEXTWED__","end_date":"__NEXTWED__","course":""}
-用户"把明天第一节改到下午" → {"intent":"adjust","kind":"","range":"","start_date":"","end_date":"","course":""}
-用户"作业我做完了" → {"intent":"adjust","kind":"","range":"","start_date":"","end_date":"","course":""}
-用户"今天天气不错" → {"intent":"unknown","kind":"","range":"","start_date":"","end_date":"","course":""}
+用户"我还有哪些作业没交" → {"intent":"query","kind":"deadline","range":"all","start_date":"","end_date":"","course":"","action":"","title_kw":"","ordinal":0,"start_time":"","end_time":""}
+用户"我今天有什么课" → {"intent":"query","kind":"日程","range":"today","start_date":"","end_date":"","course":"","action":"","title_kw":"","ordinal":0,"start_time":"","end_time":""}
+用户"明天有啥要交的" → {"intent":"query","kind":"deadline","range":"tomorrow","start_date":"","end_date":"","course":"","action":"","title_kw":"","ordinal":0,"start_time":"","end_time":""}
+用户"这周有什么安排" → {"intent":"query","kind":"","range":"7d","start_date":"","end_date":"","course":"","action":"","title_kw":"","ordinal":0,"start_time":"","end_time":""}
+用户"高数有什么作业" → {"intent":"query","kind":"deadline","range":"all","start_date":"","end_date":"","course":"高数","action":"","title_kw":"","ordinal":0,"start_time":"","end_time":""}
+用户"下周三有什么" → {"intent":"query","kind":"","range":"custom","start_date":"__NEXTWED__","end_date":"__NEXTWED__","course":"","action":"","title_kw":"","ordinal":0,"start_time":"","end_time":""}
+用户"删掉明天的高数" → {"intent":"adjust","kind":"日程","range":"tomorrow","start_date":"","end_date":"","course":"","action":"delete","title_kw":"高数","ordinal":0,"start_time":"","end_time":""}
+用户"撤销" → {"intent":"adjust","kind":"","range":"","start_date":"","end_date":"","course":"","action":"restore","title_kw":"","ordinal":0,"start_time":"","end_time":""}
+用户"把明天第一节改到下午两点" → {"intent":"adjust","kind":"日程","range":"tomorrow","start_date":"","end_date":"","course":"","action":"reschedule","title_kw":"","ordinal":1,"start_time":"14:00","end_time":""}
+用户"高数挪到明天下午三点" → {"intent":"adjust","kind":"日程","range":"tomorrow","start_date":"","end_date":"","course":"","action":"reschedule","title_kw":"高数","ordinal":0,"start_time":"15:00","end_time":""}
+用户"作业我做完了" → {"intent":"adjust","kind":"deadline","range":"","start_date":"","end_date":"","course":"","action":"","title_kw":"","ordinal":0,"start_time":"","end_time":""}
+用户"今天天气不错" → {"intent":"unknown","kind":"","range":"","start_date":"","end_date":"","course":"","action":"","title_kw":"","ordinal":0,"start_time":"","end_time":""}
 
 只输出 JSON。"""
 
 _RANGES = ("all", "today", "tomorrow", "3d", "7d", "custom")
 _KINDS = ("deadline", "日程")
+_ACTIONS = ("delete", "restore", "reschedule")
 
 
 class ConfigError(RuntimeError):
@@ -131,7 +145,7 @@ def parse(text):
         "messages": [{"role": "system", "content": _system()},
                      {"role": "user", "content": text}],
         "temperature": 0,
-        "max_tokens": 200,
+        "max_tokens": 300,                                # 输出字段从 6 个涨到 12 个
         "response_format": {"type": "json_object"},   # 服务端已实测支持
     }
     content = _post(body)
@@ -156,6 +170,26 @@ def _date_ok(s):
         return ""
 
 
+def _time_ok(s):
+    """"14:00" / "9:5" 这类写法归一成 "HH:MM"；认不出来返回空串。"""
+    m = re.match(r"^\s*(\d{1,2})\s*[:：点时]\s*(\d{1,2})?\s*分?\s*$", str(s or ""))
+    if not m:
+        return ""
+    h, mi = int(m.group(1)), int(m.group(2) or 0)
+    if 0 <= h <= 23 and 0 <= mi <= 59:
+        return f"{h:02d}:{mi:02d}"
+    return ""
+
+
+def _ordinal(v):
+    """「第一条」→ 1。模型偶尔给字符串，收窄到 0-9。"""
+    try:
+        n = int(v)
+    except (TypeError, ValueError):
+        return 0
+    return n if 1 <= n <= 9 else 0
+
+
 def _clean(d):
     """把模型输出收进电脑端认识的取值，非法值一律降级。"""
     intent = str(d.get("intent") or "unknown").strip().lower()
@@ -171,6 +205,14 @@ def _clean(d):
     end = _date_ok(str(d.get("end_date") or "").strip())
     if rng == "custom" and not (start and end):
         rng = "all"                     # 说了自定义却没给出日期，退回不限时间而不是报错
+
+    # 写操作的三件套：模型乱填就当没抽到，上层会退回「再问一句」
+    action = str(d.get("action") or "").strip().lower()
+    if action not in _ACTIONS or intent != "adjust":
+        action = ""                     # 非 adjust 带上 action 会误导上层去写库
+    if action == "update":              # 模型爱自己发明这个；语义就是改期
+        action = "reschedule"
+
     return {
         "intent": intent,
         "kind": kind,
@@ -178,4 +220,9 @@ def _clean(d):
         "start_date": start if rng == "custom" else "",
         "end_date": end if rng == "custom" else "",
         "course": str(d.get("course") or "").strip(),
+        "action": action,
+        "title_kw": str(d.get("title_kw") or "").strip()[:20],
+        "ordinal": _ordinal(d.get("ordinal")),
+        "start_time": _time_ok(d.get("start_time")),
+        "end_time": _time_ok(d.get("end_time")),
     }

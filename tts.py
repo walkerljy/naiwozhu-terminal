@@ -38,7 +38,7 @@ TEMPLATES = {
     "nearest":        "最近的是{title}，{when}。",
     "nearest.loc":    "最近的是{title}，{when}，在{location}。",
     "stale":          "课表已经{age}没更新了，可能不是最新的。",
-    "write.wip":      "改数据还没接通，先去电脑上改吧。",
+    "write.wip":      "这个我还改不了，得去电脑上的网页弄。",
     "fail":           "没办成，{reason}。",
     "unknown":        "这个我还不太会，你换个说法试试。",
     "not_heard":      "没听清，请再说一次。",
@@ -46,6 +46,30 @@ TEMPLATES = {
     "auth":           "电脑那边说密钥不对，检查一下配置。",
     "config":         "还没配置模型密钥，先把配置填好。",
     "llm":            "模型那边没响应，等会儿再问我一次。",
+
+    # ---- 条目改 / 删 / 隐藏（2026-11 电脑端新增接口）----
+    # 删和隐藏都要确认：单轮改多轮，先复述「是这一条吗」，收到「对」才写。
+    "confirm.delete":     "要删掉{what}吗？确认就说对。",
+    "confirm.reschedule": "把{what}改到{when}，对吗？",
+    "confirm.pick":       "找到{n}条，要哪一条？",
+    "ask.pick":           "第几条？",
+    "ok.delete":          "好，删掉了。",
+    "ok.hide":            "交我办里那条改不了，我在这里把它隐藏了。",
+    "ok.restore":         "好，恢复回来了。",
+    "ok.reschedule":      "改好了。",
+    "cancelled":          "好，那就不动它。",
+    "readonly":           "交我办里的课表改不了。要的话我把它隐藏，再手动加一条新的。",
+    "ask.time":           "改成几点？",
+
+    # ---- 到点提醒 ----
+    # 一个位最多念两三条；时刻只念时分，别把日期也念进去。
+    "remind.morning.head":  "今天的安排：",
+    "remind.evening.head":  "明天的安排：",
+    "remind.soon.head":     "马上要开始了：",
+    "remind.item.schedule": "{when}，{title}。",
+    "remind.item.deadline": "{when}截止，{title}。",
+    "remind.item.overdue":  "还欠着，{title}。",
+    "remind.more":          "还有{n}条，问我。",
 }
 
 _MAX_PHRASE = 40          # 最长匹配字数：要能容下"习近平新时代中国特色社会主义思想概论"这种长课名
@@ -152,8 +176,10 @@ def human_time(iso):
     else:
         ap, h12 = "晚上", h - 12
     out = f"{day}{ap}{cn_int(h12, liang=True)}点"
-    if m:
-        out += f"{cn_int(m, liang=True)}分"
+    if m == 30:                       # 说「四点半」比「四点三十分」自然
+        out += "半"
+    elif m:
+        out += f"{cn_int(m)}分"
     return out
 
 

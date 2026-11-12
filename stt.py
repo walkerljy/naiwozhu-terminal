@@ -255,13 +255,16 @@ def wait_for_wake(sec=None):
             return None
 
 
-def capture(ring=(), ack=None):
+def capture(ring=(), ack=None, sec=None):
     """录一句话并返回文字。
 
     ring 里的预录会先灌进识别器，所以唤醒词本身也会被再识别一遍，
     返回前要去掉它（_strip_wake）。说完后静音 SILENCE_SEC 秒就结束；
     一直不说话就一直录到 MAX_SEC，不会提前放弃——
     提前放弃看着省时间，实际会把没踩到阈值的那句话整句吃掉。
+
+    sec 给定时最多录这么久（多轮确认时用：问「是吗」之后听 6 秒就够，
+    不必让人对着麦干等 12 秒）。
 
     ack 是一个"应一声"的回调（播"我在"）。为什么放在这里判断：
     用户有两种说法——
@@ -278,7 +281,7 @@ def capture(ring=(), ack=None):
     for block in ring:
         rec.AcceptWaveform(block.tobytes())
 
-    it = iter(record_stream(dur=config.MAX_SEC))
+    it = iter(record_stream(dur=sec or config.MAX_SEC))
     head = []
     if ack is not None:
         for _ in range(3):                         # 3 × 100ms
